@@ -1,3 +1,3 @@
 import ParseC
 
-main = undefined
+main = putStrLn "Hello, world!"

@@ -1,5 +1,16 @@
 module ParseC where
 
+type Parser a b = [a] -> Either (b, [a]) String
+
+parser :: Eq a => a -> Parser a a
+parser _ [] = Right "Empty input"
+parser x xs
+  | head xs == x = Left (x, tail xs)
+  | otherwise    = Right "failed"
+
+parsers :: Eq a => [a] -> [Parser a a]
+parsers = map parser
+
 (.>>.) :: Parser a b -> Parser a c -> Parser a (b, c)
 (.>>.) p1 p2 = either (\(x, rstr) -> either (\(y, rrstr) -> Left ((x, y), rrstr)) (Right . id) $ p2 rstr) (Right .id) . p1
 
