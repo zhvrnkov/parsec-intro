@@ -57,7 +57,7 @@ anyOf = choice . parsers
 -- run all parsers in sequence
 -- if any failed -- failed
 -- if all succeed -- output the sequence
-psequence :: [Parser a a] -> Parser a [a]
+psequence :: [Parser d a] -> Parser d [a]
 psequence parsers = foldl (\acc p -> (|>>) (\(x, y) -> x ++ y) $ (acc .>>. p)) p ps
    where (p:ps) = map ((:[]) |>>) parsers
 
@@ -69,14 +69,15 @@ psequence parsers = foldl (\acc p -> (|>>) (\(x, y) -> x ++ y) $ (acc .>>. p)) p
 (>>%) p x = (\_ -> x) |>> p
 
 many parser input = either success failure $ parser input
-  where success = (\(x, rinput) -> let manyOutput = (many parser rinput)
-                                   in (x:(fst manyOutput), snd manyOutput))
-        failure = (\_ -> ([], input)) 
+  where success = (\(x, rinput) -> let (Left manyOutput) = (many parser rinput)
+                                   in Left (x:(fst manyOutput), snd manyOutput))
+        failure = (\_ -> Left ([], input)) 
 
 many1 parser = either success failure . parser
-  where success = (\(x, rinput) -> let manyOutput = many parser rinput
+  where success = (\(x, rinput) -> let (Left manyOutput) = many parser rinput
                                    in Left (x:(fst manyOutput), snd manyOutput))
         failure = (Right . id)
 
 pdefault :: a -> Parser a a
 pdefault x = (\input -> Left (x, input))
+
