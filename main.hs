@@ -1,7 +1,12 @@
 module ParseC where
+import Data.Maybe
 
 type ParserOutput a b = Either (b, [a]) String
 type Parser a b = [a] -> ParserOutput a b
+
+toMaybe :: ParserOutput a b -> Maybe (b, [a])
+toMaybe (Left x) = Just x
+toMaybe (Right _) = Nothing
 
 parser :: Eq a => a -> Parser a a
 parser _ [] = Right "Empty input"
@@ -83,13 +88,22 @@ pdefault x = (\input -> Left (x, input))
 
 -----------------------------------------------
 
-whiteSpace = many1 . anyOf $ show ['\0', ' ', '\t']
+data SwiftEnum = SwiftEnum String [Case]
+  deriving Show
+data Case = Case String | AssociatedCase String String
+  deriving Show
+
+
+newLine = parser '\n'
+whiteSpace = anyOf $ show [' ', '\t']
+
+whiteSpaces = many1 . anyOf $ show [' ', '\t']
 comment = (\(x, y) -> x ++ y) |>> (commentBegin .>>. anyLine)
 commentBegin = psequence $ parsers "//"
-anyLine = (concat |>> (many (anyWord <|> whiteSpace <|> commentBegin))) .>> parser '\n'
+anyLine = (concat |>> (many (anyWord <|> whiteSpaces <|> commentBegin))) .>> newLine
 comments = unlines |>> (many comment)
 
-emptyLine = (many . anyOf $ show ['\0', ' ', '\t']) .>> parser '\n'
+emptyLine = (many . anyOf $ show ['\0', ' ', '\t']) .>> newLine
 
 emptyLinesOrComments = unlines |>> many (comment <|> emptyLine)
 
@@ -98,26 +112,34 @@ space = psequence $ parsers " "
 anyWord = many1 . anyOf $ show (['a'..'z'] ++ ['A'..'Z'])
 enumDeclaration = psequence [enum, space, anyWord]
 
-test = psequence [emptyLinesOrComments, enum, space, anyWord] $ testData
+ecase = psequence $ parsers "case"
+ecaseName = anyWord
+ecaseDeclaration = psequence [ecase, show |>> whiteSpace, ecaseName, show |>> newLine]
+ecaseDeclarations = many1 ecaseDeclaration
 
+ecaseModel :: [String] -> Maybe Case
+ecaseModel [_, _, name] = Just $ Case name
+ecaseModel [_, _, name, associatedValue] = Just $ AssociatedCase name associatedValue
+ecaseModel _ = Nothing
+
+parseSwiftEnum :: String -> Maybe SwiftEnum
+parseSwiftEnum input = do
+  (_, topTrimmedData)  <- toMaybe $ emptyLinesOrComments input
+  ([_, _, enumName], enumBody) <- toMaybe $ enumDeclaration topTrimmedData
+  (_, topBraceTrimmedData) <- toMaybe $ psequence [space, show |>> parser '{', show |>> newLine] enumBody
+  (stringCases, _) <- toMaybe $ ecaseDeclarations topBraceTrimmedData
+  let cases = catMaybes $ map (ecaseModel . init) stringCases
+      enum = SwiftEnum enumName cases
+  return enum
+
+
+test = parseSwiftEnum testData
 testData = unlines ["//",
                     "//comment",
                     "// comment with",
                     "",
                     "enum Foo {",
-                    "case first(one: Int)",
-                    "enum NestedTest {",
-                    "case just(one: Int)",
-                    "}",
+                    "case first",
                     "case second",
-                    "enum NestedTest {",
-                    "case just(one: Int)",
-                    "}",
-                    "case third(one: Int)",
+                    "case third",
                     "}"]
-data SwiftEnum = SwiftEnum String [EnumMembers]           
-data EnumMembers = NestedEnum SwiftEnum | Cases [String]
-
-parseSwiftEnum :: String -> [EnumMembers]
-parseSwiftEnum = undefined
-
