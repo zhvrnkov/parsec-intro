@@ -81,3 +81,43 @@ many1 parser = either success failure . parser
 pdefault :: a -> Parser a a
 pdefault x = (\input -> Left (x, input))
 
+-----------------------------------------------
+
+whiteSpace = many1 . anyOf $ show ['\0', ' ', '\t']
+comment = (\(x, y) -> x ++ y) |>> (commentBegin .>>. anyLine)
+commentBegin = psequence $ parsers "//"
+anyLine = (concat |>> (many (anyWord <|> whiteSpace <|> commentBegin))) .>> parser '\n'
+comments = unlines |>> (many comment)
+
+emptyLine = (many . anyOf $ show ['\0', ' ', '\t']) .>> parser '\n'
+
+emptyLinesOrComments = unlines |>> many (comment <|> emptyLine)
+
+enum = psequence (parsers "enum")
+space = psequence $ parsers " "
+anyWord = many1 . anyOf $ show (['a'..'z'] ++ ['A'..'Z'])
+enumDeclaration = psequence [enum, space, anyWord]
+
+test = psequence [emptyLinesOrComments, enum, space, anyWord] $ testData
+
+testData = unlines ["//",
+                    "//comment",
+                    "// comment with",
+                    "",
+                    "enum Foo {",
+                    "case first(one: Int)",
+                    "enum NestedTest {",
+                    "case just(one: Int)",
+                    "}",
+                    "case second",
+                    "enum NestedTest {",
+                    "case just(one: Int)",
+                    "}",
+                    "case third(one: Int)",
+                    "}"]
+data SwiftEnum = SwiftEnum String [EnumMembers]           
+data EnumMembers = NestedEnum SwiftEnum | Cases [String]
+
+parseSwiftEnum :: String -> [EnumMembers]
+parseSwiftEnum = undefined
+
