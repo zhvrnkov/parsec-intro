@@ -114,12 +114,23 @@ enumDeclaration = psequence [enum, space, anyWord]
 
 ecase = psequence $ parsers "case"
 ecaseName = anyWord
-ecaseDeclaration = psequence [ecase, show |>> whiteSpace, ecaseName, show |>> newLine]
-ecaseDeclarations = many1 ecaseDeclaration
+ecaseDeclaration = (\[_, _, name, _] -> [name]) |>> psequence [ecase, show |>> whiteSpace, ecaseName, show |>> newLine]
+
+associatedEcaseDeclaration = concatTuple |>>
+                             (name .>>. associatedEcaseValues .>> (psequence [show |>> newLine]))
+  where name = (\[_, _, name] -> [name]) |>> psequence [ecase, show |>> whiteSpace, ecaseName]
+        concatTuple = (\(x, y) -> x ++ y)
+associatedEcaseValues = pbetween (show |>> parser '(') content (show |>> parser ')')
+  where content = (\[name, _, _, caseType] -> [name, caseType]) |>> psequence [anyWord,
+                                        show |>> parser ':',
+                                        show |>> whiteSpace,
+                                        anyWord]
+
+ecaseDeclarations = many1 (ecaseDeclaration <|> associatedEcaseDeclaration)
 
 ecaseModel :: [String] -> Maybe Case
-ecaseModel [_, _, name] = Just $ Case name
-ecaseModel [_, _, name, associatedValue] = Just $ AssociatedCase name associatedValue "String"
+ecaseModel [name] = Just $ Case name
+ecaseModel [name, valueName, valueType] = Just $ AssociatedCase name valueName valueType
 ecaseModel _ = Nothing
 
 parseSwiftEnum :: String -> Maybe SwiftEnum
@@ -128,14 +139,14 @@ parseSwiftEnum input = do
   ([_, _, enumName], enumBody) <- toMaybe $ enumDeclaration topTrimmedData
   (_, topBraceTrimmedData) <- toMaybe $ psequence [space, show |>> parser '{', show |>> newLine] enumBody
   (stringCases, _) <- toMaybe $ ecaseDeclarations topBraceTrimmedData
-  let cases = catMaybes $ map (ecaseModel . init) stringCases
+  let cases = catMaybes $ map ecaseModel stringCases
       enum = SwiftEnum enumName cases
   return enum
 
 decodable :: SwiftEnum -> String
 decodable (SwiftEnum name cases) = unlines ["extension " ++ name ++ ": Decodable {",
-                                           decodableInit cases,
-                                           "}"]
+                                            decodableInit cases,
+                                            "}"]
 
 decodableInit :: [Case] -> String
 decodableInit cases = (unlines lines) ++ "}"
@@ -158,15 +169,14 @@ associatedValueConstructor caseName valueName valueType = unlines constructorLin
                             "}"]
 
 test = parseSwiftEnum testData
-testData = unlines ["//",
+testCases = ["case first(one: Int)",
+             "case second",
+             "case third"]
+testData = unlines $ ["//",
                     "//comment",
                     "// comment with",
                     "",
-                    "enum Foo {",
-                    "case first",
-                    "case second",
-                    "case third",
-                    "}"]
+                    "enum Foo {"] ++ testCases ++ ["}"]
 
 testDecodable = do
   enum <- test
