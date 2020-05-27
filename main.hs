@@ -1,5 +1,6 @@
 module ParseC where
 import Data.Maybe
+import Data.Char
 
 type ParserOutput a b = Either (b, [a]) String
 type Parser a b = [a] -> ParserOutput a b
@@ -90,9 +91,8 @@ pdefault x = (\input -> Left (x, input))
 
 data SwiftEnum = SwiftEnum String [Case]
   deriving Show
-data Case = Case String | AssociatedCase String String
+data Case = Case String | AssociatedCase String String String
   deriving Show
-
 
 newLine = parser '\n'
 whiteSpace = anyOf $ show [' ', '\t']
@@ -119,7 +119,7 @@ ecaseDeclarations = many1 ecaseDeclaration
 
 ecaseModel :: [String] -> Maybe Case
 ecaseModel [_, _, name] = Just $ Case name
-ecaseModel [_, _, name, associatedValue] = Just $ AssociatedCase name associatedValue
+ecaseModel [_, _, name, associatedValue] = Just $ AssociatedCase name associatedValue "String"
 ecaseModel _ = Nothing
 
 parseSwiftEnum :: String -> Maybe SwiftEnum
@@ -132,6 +132,30 @@ parseSwiftEnum input = do
       enum = SwiftEnum enumName cases
   return enum
 
+decodable :: SwiftEnum -> String
+decodable (SwiftEnum name cases) = unlines ["extension " ++ name ++ ": Decodable {",
+                                           decodableInit cases,
+                                           "}"]
+
+decodableInit :: [Case] -> String
+decodableInit cases = (unlines lines) ++ "}"
+  where initDeclaration = "init(from decoder: Decoder) throws {"
+        lines = initDeclaration : (filter (not . null) . map caseValueConstructor $ cases)
+
+codingKeysName :: String -> String
+codingKeysName (x:xs) = (toUpper x):xs ++ "CodingKeys"
+
+caseValueConstructor :: Case -> String
+caseValueConstructor (AssociatedCase caseName valueName valueType) = associatedValueConstructor caseName valueName valueType
+caseValueConstructor _ = ""
+
+associatedValueConstructor :: String -> String -> String -> String
+associatedValueConstructor caseName valueName valueType = unlines constructorLines
+  where containerName = caseName ++ "Container"
+        constructorLines = ["if let " ++ containerName ++ " = try? decoder.container(keyedBy: " ++ codingKeysName caseName ++ ".self,",
+                            "let " ++ valueName ++ " = try? " ++ containerName ++ ".decode(" ++ valueType ++ ".self, forKey: " ++ valueName ++ ") {",
+                            "self = ." ++ caseName ++ "(" ++ valueName ++ ": " ++ valueName ++ ")",
+                            "}"]
 
 test = parseSwiftEnum testData
 testData = unlines ["//",
@@ -143,3 +167,7 @@ testData = unlines ["//",
                     "case second",
                     "case third",
                     "}"]
+
+testDecodable = do
+  enum <- test
+  return $ decodable enum
