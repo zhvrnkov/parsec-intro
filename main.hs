@@ -123,9 +123,9 @@ associatedEcaseDeclaration = concatTuple |>>
                              (name .>>. associatedEcaseValues .>> (psequence [show |>> newLine]))
   where name = (\[_, _, name] -> [name]) |>> psequence [ecase, whiteSpace, ecaseName]
         concatTuple = (\(x, y) -> x ++ y)
-associatedEcaseValues = pbetween (show |>> parser '(') content (show |>> parser ')')
+associatedEcaseValues = pbetween (sparser '(') content (sparser ')')
   where content = (\[name, _, _, caseType] -> [name, caseType]) |>> psequence [anyWord,
-                                        show |>> parser ':',
+                                        sparser ':',
                                         whiteSpace,
                                         anyWord]
 
@@ -140,7 +140,7 @@ parseSwiftEnum :: String -> Maybe SwiftEnum
 parseSwiftEnum input = do
   (_, topTrimmedData)  <- toMaybe $ emptyLinesOrComments input
   ([_, _, enumName], enumBody) <- toMaybe $ enumDeclaration topTrimmedData
-  (_, topBraceTrimmedData) <- toMaybe $ psequence [space, show |>> parser '{', show |>> newLine] enumBody
+  (_, topBraceTrimmedData) <- toMaybe $ psequence [space, sparser '{', show |>> newLine] enumBody
   (stringCases, _) <- toMaybe $ ecaseDeclarations topBraceTrimmedData
   let cases = catMaybes $ map ecaseModel stringCases
       enum = SwiftEnum enumName cases
@@ -152,9 +152,13 @@ decodable (SwiftEnum name cases) = unlines ["extension " ++ name ++ ": Decodable
                                             "}"]
 
 decodableInit :: [Case] -> String
-decodableInit cases = (unlines lines) ++ "}"
-  where initDeclaration = "init(from decoder: Decoder) throws {"
-        lines = initDeclaration : (filter (not . null) . map caseValueConstructor $ cases)
+decodableInit cases = (unlines lines)
+  where initHeadDeclaration = "init(from decoder: Decoder) throws {"
+        initTailDeclaration = "}"
+        initStatements = (filter (not . null) . map caseValueConstructor $ cases)
+        elses = "": map (const "else ") [0..(length initStatements) - 2]
+        initBody = zipWith (++) elses initStatements
+        lines = (initHeadDeclaration: initBody) ++ [initTailDeclaration]
 
 codingKeysName :: String -> String
 codingKeysName (x:xs) = (toUpper x):xs ++ "CodingKeys"
@@ -173,8 +177,8 @@ associatedValueConstructor caseName valueName valueType = unlines constructorLin
 
 test = parseSwiftEnum testData
 testCases = ["case first(one: Int)",
-             "case second",
-             "case third"]
+             "case second(second: String)",
+             "case third(third: UInt64)"]
 testData = unlines $ ["//",
                     "//comment",
                     "// comment with",
