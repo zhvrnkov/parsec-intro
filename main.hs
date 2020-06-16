@@ -15,6 +15,9 @@ parser x xs
   | head xs == x = Left (x, tail xs)
   | otherwise    = Right "failed"
 
+sparser :: Eq a => a -> Parser a [a]
+sparser x = (:[]) |>> parser x
+
 parsers :: Eq a => [a] -> [Parser a a]
 parsers = map parser
 
@@ -95,7 +98,7 @@ data Case = Case String | AssociatedCase String String String
   deriving Show
 
 newLine = parser '\n'
-whiteSpace = anyOf $ show [' ', '\t']
+whiteSpace = (:[]) |>> (anyOf $ show [' ', '\t'])
 
 whiteSpaces = many1 . anyOf $ show [' ', '\t']
 comment = (\(x, y) -> x ++ y) |>> (commentBegin .>>. anyLine)
@@ -114,16 +117,16 @@ enumDeclaration = psequence [enum, space, anyWord]
 
 ecase = psequence $ parsers "case"
 ecaseName = anyWord
-ecaseDeclaration = (\[_, _, name, _] -> [name]) |>> psequence [ecase, show |>> whiteSpace, ecaseName, show |>> newLine]
+ecaseDeclaration = (\[_, _, name, _] -> [name]) |>> psequence [ecase, whiteSpace, ecaseName, show |>> newLine]
 
 associatedEcaseDeclaration = concatTuple |>>
                              (name .>>. associatedEcaseValues .>> (psequence [show |>> newLine]))
-  where name = (\[_, _, name] -> [name]) |>> psequence [ecase, show |>> whiteSpace, ecaseName]
+  where name = (\[_, _, name] -> [name]) |>> psequence [ecase, whiteSpace, ecaseName]
         concatTuple = (\(x, y) -> x ++ y)
 associatedEcaseValues = pbetween (show |>> parser '(') content (show |>> parser ')')
   where content = (\[name, _, _, caseType] -> [name, caseType]) |>> psequence [anyWord,
                                         show |>> parser ':',
-                                        show |>> whiteSpace,
+                                        whiteSpace,
                                         anyWord]
 
 ecaseDeclarations = many1 (ecaseDeclaration <|> associatedEcaseDeclaration)
