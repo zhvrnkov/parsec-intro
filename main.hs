@@ -1,6 +1,7 @@
 module ParseC where
 import Data.Maybe
 import Data.Char
+import Text.Printf
 
 type ParserOutput a b = Either (b, [a]) String
 type Parser a b = [a] -> ParserOutput a b
@@ -147,9 +148,10 @@ parseSwiftEnum input = do
   return enum
 
 decodable :: SwiftEnum -> String
-decodable (SwiftEnum name cases) = unlines ["extension " ++ name ++ ": Decodable {",
-                                            decodableInit cases,
-                                            "}"]
+decodable (SwiftEnum name cases) = unlines lines
+  where lines = [printf "extension %s: Decodable {" name,
+                decodableInit cases,
+                "}"]
 
 decodableInit :: [Case] -> String
 decodableInit cases = (unlines lines)
@@ -161,19 +163,25 @@ decodableInit cases = (unlines lines)
         lines = (initHeadDeclaration: initBody) ++ [initTailDeclaration]
 
 codingKeysName :: String -> String
-codingKeysName (x:xs) = (toUpper x):xs ++ "CodingKeys"
+codingKeysName (x:xs) = printf "%sCodingKeys" $ (toUpper x):xs
 
 caseValueConstructor :: Case -> String
 caseValueConstructor (AssociatedCase caseName valueName valueType) = associatedValueConstructor caseName valueName valueType
 caseValueConstructor _ = ""
 
 associatedValueConstructor :: String -> String -> String -> String
-associatedValueConstructor caseName valueName valueType = unlines constructorLines
+associatedValueConstructor caseName valueName valueType = unlines lines
   where containerName = caseName ++ "Container"
-        constructorLines = ["if let " ++ containerName ++ " = try? decoder.container(keyedBy: " ++ codingKeysName caseName ++ ".self,",
-                            "let " ++ valueName ++ " = try? " ++ containerName ++ ".decode(" ++ valueType ++ ".self, forKey: " ++ valueName ++ ") {",
-                            "self = ." ++ caseName ++ "(" ++ valueName ++ ": " ++ valueName ++ ")",
-                            "}"]
+        lines =
+          [
+          printf "if let %s = try? decoder.container(keyedBy: %s.self),"
+          containerName (codingKeysName caseName),
+          printf "let %s = try? %s.decode(%s.self, forKey: %s) {"
+          containerName valueType valueName,
+          printf "self = .%s(%s: %s)"
+          caseName valueName valueName,
+          "}"
+          ]
 
 test = parseSwiftEnum testData
 testCases = ["case first(one: Int)",
