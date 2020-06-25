@@ -176,8 +176,8 @@ associatedValueConstructor caseName valueName valueType = unlines lines
           [
           printf "if let %s = try? decoder.container(keyedBy: %s.self),"
           containerName (codingKeysName caseName),
-          printf "let %s = try? %s.decode(%s.self, forKey: %s) {"
-          containerName valueType valueName,
+          printf "let %s = try? %s.decode(%s.self, forKey: .%s) {"
+          valueName containerName valueType valueName,
           printf "self = .%s(%s: %s)"
           caseName valueName valueName,
           "}"
