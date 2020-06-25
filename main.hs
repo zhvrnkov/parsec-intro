@@ -95,8 +95,11 @@ pdefault x = (\input -> Left (x, input))
 
 data SwiftEnum = SwiftEnum String [Case]
   deriving Show
-data Case = Case String | AssociatedCase String String String
+data Case = Case String [AssociatedValue]
   deriving Show
+data AssociatedValue = AssociatedValue { name :: String,
+                                         type' :: String
+                                       } deriving Show
 
 newLine = parser '\n'
 whiteSpace = (:[]) |>> (anyOf $ show [' ', '\t'])
@@ -133,8 +136,9 @@ associatedEcaseValues = pbetween (sparser '(') content (sparser ')')
 ecaseDeclarations = many1 (ecaseDeclaration <|> associatedEcaseDeclaration)
 
 ecaseModel :: [String] -> Maybe Case
-ecaseModel [name] = Just $ Case name
-ecaseModel [name, valueName, valueType] = Just $ AssociatedCase name valueName valueType
+ecaseModel [name] = Just $ Case name []
+ecaseModel [name, valueName, valueType] = Just $ Case name [value]
+  where value = AssociatedValue {name=valueName, type'=valueType}
 ecaseModel _ = Nothing
 
 parseSwiftEnum :: String -> Maybe SwiftEnum
@@ -166,7 +170,8 @@ codingKeysName :: String -> String
 codingKeysName (x:xs) = printf "%sCodingKeys" $ (toUpper x):xs
 
 caseValueConstructor :: Case -> String
-caseValueConstructor (AssociatedCase caseName valueName valueType) = associatedValueConstructor caseName valueName valueType
+caseValueConstructor (Case _ []) = ""
+caseValueConstructor (Case caseName [value]) = associatedValueConstructor caseName (name value) (type' value)
 caseValueConstructor _ = ""
 
 associatedValueConstructor :: String -> String -> String -> String
